@@ -1,0 +1,71 @@
+<div class="table-data">
+	<div class="order">
+		<div class="">
+			<h3>Profiles</h3>
+		</div>
+		<% if (typeof error !== 'undefined' && error) { %>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+				<% if(error === "Profile already exist! Check ID and Name") {%>
+					<strong>Error!</strong> <%= error %>.
+					<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+				<% } else { %>
+					<strong>Successfully!</strong> <%= error %>.
+					<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+				<% } %>
+                
+            </div>
+        <% } else if ((typeof error !== 'undefined' && success)) { %>
+			<div class="alert alert-success alert-dismissible fade show" role="alert">
+                <strong>Successfully!</strong> <%= success %>.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <% } %>
+		<table id="ProfileTable">
+			<thead>
+				<tr>
+					<th class="text-center">#</th>
+					<th class="text-center">Name</th>
+					<th class="text-center">ID Number#</th>
+					<th class="text-center">Phone Number#</th>
+					<th class="text-center">Role</th>
+					<th class="text-center">Created By</th>
+					<th class="text-center">Action</th>
+				</tr>
+			</thead>
+			<tbody>
+				<% MyProfile.forEach((profile, index) => { %>
+					<tr>
+						<td class="text-center">
+							<p2><%= index + 1 %>.</p2>
+							<p2><img src="<%= profile.ProfileImage?  profile.ProfileImage : '/Default.webp' %>"></p2>
+						</td>
+						<td class="text-center">
+							<p2><%= profile.FullName %></p2>
+						</td>
+						<td class="text-center"><%= profile.UnivStudID %></td>
+						<td class="text-center"><span><%= profile.PhoneNumber %></span></td>
+						<td class="text-center"><span><%= profile.Role %></span></td>
+						<td class="text-center"><span><%= profile.CreatedBy %></span></td>
+						<td class="text-center">
+							<button type="button" class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#EditProfile<%= profile._id %>">Edit</button>
+							<button type="button" class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#Delete<%= profile._id %>">Delete</button>
+						</td>
+					</tr>
+				<% }); %>
+			</tbody>
+		</table>
+	</div>	
+</div>
+
+
+
+  <script>
+	$(document).ready(function() {
+	  $('#ProfileTable').DataTable({
+		responsive: true,
+		"style": "bootstrap5"
+	  });
+	});
+  </script>
+
+  

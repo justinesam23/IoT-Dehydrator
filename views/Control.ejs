@@ -1,0 +1,474 @@
+<!-- MAIN -->
+
+
+<script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+<script>
+	const socket = io();
+	let activeSource = '';
+	let activeSourceColor = '';
+	let activeMode = '';
+	let isButtonDisabled = false;
+
+	socket.on('mqttMessage', (payload) => {
+			if (payload.topic === 'MYMQTTDRYER/TemperatureHumidityTopic') {
+				// console.log("Received from MYMQTTDRYER/TemperatureHumidityTopic");
+				const messageObj = JSON.parse(payload.message);
+				// console.log(`Temperature values:`);
+				for (let i = 0; i < messageObj.Temperature.length; i++) {
+					document.getElementById('Temperature' + i).value = messageObj.Temperature[i];
+					// console.log(`Index ${i}: ${messageObj.Temperature[i]}`);
+				}
+				// console.log(`Humidity values:`);
+				for (let i = 0; i < messageObj.Humidity.length; i++) {
+					document.getElementById('Humidity' + i).value = messageObj.Humidity[i];
+					// console.log(`Index ${i}: ${messageObj.Humidity[i]}`);
+				}
+			} else if (payload.topic === 'MYMQTTDRYER/StoreStateTopic') {
+				const messageObj = JSON.parse(payload.message);
+				activeSource = messageObj.PowerState;
+				if (messageObj.PowerState === 'BATTERY') {
+					document.getElementById("ACPower").value = "OFF";
+					document.getElementById("BattPower").value = messageObj.PowerState;
+					activeSource = messageObj.PowerState;
+					handleSourceMessage(messageObj.PowerState)
+				} else if (messageObj.PowerState === 'AC') {
+					document.getElementById("BattPower").value = "OFF";
+					document.getElementById("ACPower").value = messageObj.PowerState;
+					activeSource = messageObj.PowerState;
+					handleSourceMessage(messageObj.PowerState)
+				} else if (messageObj.PowerState === 'OFF') {
+					document.getElementById("BattPower").value = "OFF";
+					document.getElementById("ACPower").value = "OFF";
+					activeSource = messageObj.PowerState;
+					handleSourceMessage(messageObj.PowerState)
+				}
+				if (messageObj.OperationState === 'AUTOMATIC') {
+					activeMode = messageObj.OperationState;
+					handleModeMessage(activeMode)
+				} else if (messageObj.OperationState === 'MANUAL') {
+					activeMode = messageObj.OperationState;
+					handleModeMessage(activeMode);
+				} else if (messageObj.OperationState === 'OFF') {
+					activeMode = messageObj.OperationState;
+					handleModeMessage(activeMode)
+				}
+			} else if (payload.topic === "MYMQTTDRYER/RecordPowerTopic") {
+				const messageObj = JSON.parse(payload.message); //BattPowerVoltage
+				document.getElementById('BattPowerVoltage').value = messageObj.VoltageValue;
+			} else if (payload.topic === "MYMQTTDRYER/VoltageController") {
+				const messageObj = JSON.parse(payload.message);
+				document.getElementById('VoltageReconnect').value = messageObj.VoltageReconnect;
+				document.getElementById('VoltageDisconnect').value = messageObj.VoltageDisconnect;
+			} else if (payload.topic === "MYMQTTDRYER/ESPState") {
+				const espState = payload.message;
+				document.getElementById('espState').innerText = `${espState}`;
+			}
+		})
+	
+		function switchSource(source) {
+			const acbutton = document.getElementById('acbutton');
+			const batterybutton = document.getElementById('batterybutton');
+			const sourceValue = source;
+			if (!isButtonDisabled) {
+				// console.log('<%= UserDetail.FullName %>');
+				const ActionBy = '<%= UserDetail.FullName %>';
+				const Action = 'Switch Source';
+				const Description = 'Switch source to ' + sourceValue;
+				// console.log(Description);
+
+				if (activeSource === sourceValue) {
+					// console.log('Retain');
+				} else {
+					isButtonDisabled = true;
+					acbutton.disabled = true;
+					acbutton.style.opacity = 0.5;
+					batterybutton.disabled = true;
+					batterybutton.style.opacity = 0.5;
+					setTimeout(() => {
+						if (activeSource === sourceValue) {
+							saveToMongo({
+								Description: Description,
+								Action: Action,
+								ActionBy: ActionBy
+							});
+						} else {
+							// console.log("Not Saved");
+						}
+						isButtonDisabled = false;
+						acbutton.disabled = false;
+						acbutton.style.opacity = 1;
+						batterybutton.disabled = false;
+						batterybutton.style.opacity = 1;
+					}, 5000);
+					const topic = 'MYMQTTDRYER/SwitchPowerTopic';
+					socket.emit('publishMessage', { topic, message: sourceValue });
+				}
+			}
+		};
+		function switchSourceMode() {
+			const modeSelect = document.getElementById('mode');
+			const acButton = document.getElementById('acbutton');
+			const batteryButton = document.getElementById('batterybutton');
+
+			// console.log('<%= UserDetail.FullName %>');
+			const ActionBy = '<%= UserDetail.FullName %>';
+			const Action = 'Switch mode';
+			const Description = 'Switch mode to ' + modeSelect.value;
+			// console.log(Description);
+
+			const modeValue = modeSelect.value;
+			acButton.disabled = (modeValue === "AUTOMATIC" || modeValue === "OFF");
+			batteryButton.disabled = (modeValue === "AUTOMATIC" || modeValue === "OFF");
+
+			modeSelect.disabled = true;
+			modeSelect.style.opacity = 0.5;
+
+			acButton.disabled = true;
+			batterybutton.disabled = true;
+			batterybutton.style.opacity = 0.5;
+			acButton.style.opacity = 0.5;
+
+			if (activeMode === modeValue) {
+				// console.log('Retain');
+			} else {
+				const topic = 'MYMQTTDRYER/SwitchSourceModeTopic';
+				socket.emit('publishMessage', { topic, message: modeValue });
+			}
+
+			setTimeout(() => {
+				if (activeMode === modeValue) {
+					saveToMongo({
+						Description: Description,
+						Action: Action,
+						ActionBy: ActionBy
+					});
+				} else {
+					// console.log('Not Saved');
+				}
+				handleModeMessage(activeMode);
+				modeSelect.disabled = false; // Re-enable the select element after 5 seconds
+				modeSelect.style.opacity = 1; // Restore the opacity
+				batterybutton.style.opacity = 1;
+				acButton.style.opacity = 1;
+			}, 5000); // 5-second delay
+		}
+
+
+
+	function saveToMongo(data) {
+		// Assuming you have a route on the server for saving data to MongoDB, replace '/SaveToMongo' with the correct route
+		const saveToMongoRoute = '/SaveToMongo';
+
+		// Send an HTTP POST request to the server
+		fetch(saveToMongoRoute, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+			},
+			body: JSON.stringify(data),
+		})
+			.then(response => response.text())
+			.then(message => console.log(message))
+			.catch(error => console.error('Error saving data to MongoDB:', error));
+	}
+
+
+
+	function handleSourceMessage(source) {
+		var acButton = document.getElementById('acbutton');
+		var batteryButton = document.getElementById('batterybutton');
+
+		// Update the background color of the AC and Battery buttons
+		if (source === 'AC') {
+			activeSourceColor = 'AC';
+			acli.style.backgroundColor = '#800000'; // Change this to your desired color
+			batli.style.backgroundColor = ''; // Reset battery button color
+		} else if (source === 'BATTERY') {
+			activeSourceColor = 'BATTERY';
+			batli.style.backgroundColor = '#800000'; // Change this to your desired color
+			acli.style.backgroundColor = ''; // Reset AC button color
+		} else if (source === 'OFF'){
+			activeSourceColor = 'OFF';
+			// Handle other cases or reset both buttons if needed
+			acli.style.backgroundColor = '';
+			batli.style.backgroundColor = '';
+		}
+	}
+
+	function handleModeMessage(mode) {
+		var modeSelect = document.getElementById('mode');
+		var acButton = document.getElementById('acbutton');
+		var batteryButton = document.getElementById('batterybutton');
+
+		modeSelect.value = mode;
+
+		// Enable or disable the AC and Battery buttons based on the mode
+		acButton.disabled = (mode === 'AUTOMATIC' || mode === 'OFF');
+		batteryButton.disabled = (mode === 'AUTOMATIC' || mode === 'OFF');
+
+	}
+</script>
+
+<% if (typeof error !== 'undefined' && error) { %>
+	<div class="alert alert-danger alert-dismissible fade show" role="alert">
+		<strong>Error!</strong> <%= error %>.
+		<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+	</div>
+<% } else if ((typeof error !== 'undefined' && success)) { %>
+	<div class="alert alert-warning alert-dismissible fade show" role="alert">
+		<strong>Drying Stoped!</strong> <%= success %>.
+		<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+	</div>
+<% } %>
+
+<div class="row g-2">
+	<div class="col-md">
+		<div class="form-floating">
+			<input type="text" class="form-control" id="VoltageReconnect" placeholder="VoltageReconnect" value="N/A">
+			<label for="VoltageReconnect">Voltage Reconnect</label>
+		</div>
+	</div>
+	<div class="col-md">
+		<div class="form-floating">
+			<input type="text" class="form-control" id="VoltageDisconnect" placeholder="VoltageDisconnect" value="N/A">
+			<label for="VoltageDisconnect">Voltage Disconnect</label>
+		</div>
+	</div>
+	<button type="button" class="btn btn-warning" onclick="sendDisconnectMessage()" >Send Voltage Control</button>
+</div>
+
+<div class="">
+	<div class="box-info">
+		<button id="batterybutton" style="border: 0px;" onclick="switchSource('BATTERY')">
+		<li class="group-a" id="batli">
+			<i class='bx bxs-car-battery'></i>
+			<span class="text">
+				<p class="text-a">Battery</p>
+			</span>
+		</li>
+		</button>
+
+		<button id="acbutton" style="border: 0px;" onclick="switchSource('AC')">
+		<li class="group-a" id="acli">
+			<i class='bx bxs-bolt-circle' ></i>
+			<span class="text">
+				<p class="text-a">AC</p>
+			</span>
+		</li>
+		</button>
+			
+		<li class="group-a" style="height: 128px;">
+			<i class='bx bxs-cog'></i>
+			<span class="text">
+				<!--<h3>$2543</h3>-->
+				<select id="mode" class="input-b" style="margin-top: 20px;" onchange="switchSourceMode()">
+					<option value="OFF">OFF</option>
+					<option value="AUTOMATIC">Automatic</option>
+					<option value="MANUAL">Manual</option>
+				</select>
+				<p class="text-b">Mode</p>
+			</span>
+		</li>
+	</div>
+</div>
+
+<form id="finishDryingForm" action="/FinishDrying" method="POST">
+	<div class="table-data">
+		<div class="todo" style="overflow: hidden;">
+			<div class="head">
+				<h3>Avg. TP and RH</h3>
+			</div>
+				<div class="formbold-input-group">
+					<label for="Humidity" class="formbold-form-label">Average Humidity (%)</label>
+					<input type="text" value="N/A" name="Humidity13" id="Humidity13" class="input form-control" readonly>
+				</div>
+		
+				<div class="formbold-input-group">
+					<label for="Temperature" class="formbold-form-label">Avergae Temperature (&deg;C)</label>
+					<input type="text" value="N/A" name="Temperature13" id="Temperature13" class="input form-control" readonly>
+				</div>
+		</div>
+
+		<!-- BATTERY POWER INFORMATION -->
+		<div class="todo" style="overflow: hidden;">
+			<div class="head">
+				<h3>Power Information</h3>
+			</div>
+
+			<div class="formbold-input-group">
+				<label for="" class="formbold-form-label">Power Source (BATTERY/AC)</label>
+				<div class="input-group">
+					<input type="text" value="N/A" name="BattPower" id="BattPower" style="border-right: 5px solid #800000;border-left: 0px;" class="input form-control" readonly>
+					<input type="text" value="N/A" name="ACPower" id="ACPower" style="border-left: 5px solid #800000;" class="input form-control" readonly>
+				</div>
+			</div>
+		
+			<div class="formbold-input-group">
+				<label for="" class="formbold-form-label">Battery Voltage</label>
+				<input type="text" value="N/A" name="BattPowerVoltage" id="BattPowerVoltage" class="input form-control" readonly>
+			</div>
+		</div>
+	</div>	
+
+
+<div class="table-data">
+	<div class="order">
+		<div class="">
+			<h3>
+				Temperature/Humidity
+				<button type="button" class="btn btn-warning" style="background-color:transparent; border-radius: 10px; width: 45px;border:1px solid rgb(255, 179, 0);" id="liveToastBtn">
+					<i style="color: rgb(255, 179, 0);" class="bi bi-question-circle"></i>
+				</button>
+			</h3>
+			<div class="toast-container position-fixed top-0 end-0 p-3"  tabindex="0" style="z-index: 3000;">
+				<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="5000" data-bs-autohide="true">
+					<div class="toast-header">
+					<small class="me-auto">Help?</small>
+					<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+					</div>
+					<div class="toast-body">
+						U/B . R/L= Upper/Bottom . Right/Left, TP/RH = Temprture/RelativeHumidity, -1/-2 = Check (Sensor / Wiring)
+					</div>
+				</div>
+			</div>
+		</div>
+		<table id="ProfileTable">
+			<thead>
+				<tr>
+					<th>
+						<td>
+							<div class="input-group">
+								<input value="Room TP(&deg;C)/RH(%)" type="text" aria-label="First name" style="border-left: solid 0px #800000;border-bottom: 0px; border-bottom-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature12" name="Temperature12" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity12" name="Humidity12" class="form-control text-center" readonly>
+							</div>
+						</td>
+					</th>
+				</tr>
+				<tr>
+					<th>
+						<td class="text-center">
+							<div class="input-group">
+								<input value="Position" type="text" aria-label="First name" style="border: 0px; border-top: #800000 solid 10px; border-left: #800000 solid 10px" class="form-control text-center" readonly disabled>
+								<input value="Front" type="text" aria-label="First name" style="border: 0px; border-top: #800000 solid 10px;" class="form-control text-center" readonly disabled>
+								<input value="Center" type="text" aria-label="Last name" style="border: 0px; border-top: #800000 solid 10px;" class="form-control text-center" readonly disabled>
+								<input value="Rear" type="text" aria-label="Last name" style="border: 0px; border-top: #800000 solid 10px;" class="form-control text-center" readonly disabled>
+							</div>
+						</td>
+					</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<th>
+						<td class="text-center">
+							<div class="input-group">
+								<input value="U.R TP (&deg;C)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-bottom: 0px; border-bottom-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Temperature0" name="Temperature0" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature1" name="Temperature1" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature2" name="Temperature2" class="form-control text-center" readonly>
+							</div>
+							<div class="input-group">
+								<input value="U.R RH (%)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-top: 0px; border-top-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Humidity0" name="Humidity0" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity1" name="Humidity1" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity2" name="Humidity2" class="form-control text-center" readonly>
+							</div>
+						</td>
+					</th>
+				</tr>
+				<tr>
+					<th>
+						<td class="text-center">
+							<div class="input-group">
+								<input value="B.R TP (&deg;C)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-bottom: 0px; border-bottom-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Temperature3" name="Temperature3" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature4" name="Temperature4" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature5" name="Temperature5" class="form-control text-center" readonly>
+							</div>
+							<div class="input-group">
+								<input value="B.R RH (%)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-top: 0px; border-top-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Humidity3" name="Humidity3" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity4" name="Humidity4" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity5" name="Humidity5" class="form-control text-center" readonly>
+							</div>
+						</td>
+					</th>
+				</tr>
+				<tr>
+					<th>
+						<td class="text-center">
+							<div class="input-group">
+								<input value="U.L TP (&deg;C)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-bottom: 0px; border-bottom-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Temperature6" name="Temperature6" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature7" name="Temperature7" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature8" name="Temperature8" class="form-control text-center" readonly>
+							</div>
+							<div class="input-group">
+								<input value="U.L RH (%)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-top: 0px; border-top-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Humidity6" name="Humidity6" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity7" name="Humidity7" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity8" name="Humidity8" class="form-control text-center" readonly>
+							</div>
+						</td>
+					</th>
+				</tr>
+				<tr>
+					<th>
+						<td class="text-center">
+							<div class="input-group">
+								<input value="B.L TP (&deg;C)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-bottom: 0px; border-bottom-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Temperature9" name="Temperature9" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature10" name="Temperature10" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Temperature11" name="Temperature11" class="form-control text-center" readonly>
+							</div>
+							<div class="input-group">
+								<input value="B.L RH (%)" type="text" aria-label="First name" style="border-left: solid 10px #800000;border-top: 0px; border-top-left-radius: 0;" class="form-control text-center" readonly disabled>
+								<input value="N/A" type="text" aria-label="First name" style="border: 0px;" id="Humidity9" name="Humidity9" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity10" name="Humidity10" class="form-control text-center" readonly>
+								<input value="N/A" type="text" aria-label="Last name" style="border: 0px;" id="Humidity11" name="Humidity11" class="form-control text-center" readonly>
+							</div>
+						</td>
+					</th>
+				</tr>
+			</tbody>	
+		</table>
+	</div>	
+</div>
+</form>
+
+<script>
+	function helloWorld() {
+    const topic = 'MYMQTTDRYER/GetHumidityTemp';
+	socket.emit('publishMessage', { topic, message: "GETHumidityTemperature" });
+}
+</script>
+
+<script>
+	function sendDisconnectMessage() {
+		const topic = 'MYMQTTDRYER/VoltageController';
+		const disconnectValue = document.getElementById('VoltageDisconnect').value;
+		const connectValue = document.getElementById('VoltageReconnect').value;
+		// Check if the input values are numbers
+		if (isNaN(disconnectValue) || isNaN(connectValue)) {
+			// Show a bootstrap error
+			alert('Please enter valid numbers for Voltage Disconnect and Voltage Reconnect.');
+			return;
+		}
+		// Check if the reconnect value is higher than the disconnect value
+		if (parseFloat(connectValue) <= parseFloat(disconnectValue)) {
+			// Show a bootstrap error
+			alert('Voltage Reconnect value should be higher than Voltage Disconnect value.');
+			return;
+		}
+		// Check if the input values are less than or equal to 100
+		if (parseFloat(disconnectValue) < 9 || parseFloat(connectValue) > 13.5) {
+			// Show a bootstrap error
+			alert('Disconnect Value should not be less than 9, and Connect Value should not be over 13.5.');
+			return;
+		}
+		const message = JSON.stringify({ VoltageDisconnect: parseFloat(disconnectValue), VoltageReconnect: parseFloat(connectValue) });
+		socket.emit('publishVoltage', { topic, message });
+	}
+</script>
+<!-- MAIN -->
