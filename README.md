@@ -1,2 +1,2 @@
-# IoT--Dehydrator
+# IoT-Dehydrator
 IoT- Dehydrator
